@@ -26,7 +26,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
     amount: 1 * 10 ** 6, // unit in lamports (Decimals)
     inputMint: new PublicKey(INPUT_MINT_ADDRESS),
     outputMint: new PublicKey(OUTPUT_MINT_ADDRESS),
-    slippage: 1, // 0.1%
+    slippage: 1,
     amountIsOutput: false,
   });
   const [routes, setRoutes] = useState<
@@ -48,31 +48,50 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
   const fetchRoute = React.useCallback(() => {
     setIsLoading(true);
     async function updateRoutes() {
-      console.log(formValue.amountIsOutput);
-      // TODO: Branch logic to call api in one direction then the other once a rough
       if (formValue.amountIsOutput) {
+        // Allowed slippage is less or equal to target slippage
+        // We want to end up with outAmountWithSlippage to the target value
         const { data: reversedRoutes } = await api.v1QuoteGet({
           amount: formValue.amount,
           inputMint: formValue.outputMint.toBase58(),
           outputMint: formValue.inputMint.toBase58(),
           slippage: formValue.slippage,
+          // directRoutesOnly: true,
         });
-        const approximateAmountIn = reversedRoutes?.[0]?.outAmount;
+        let approximateAmountIn = reversedRoutes?.[0]?.outAmount;
         console.log("approximateAmountIn:", approximateAmountIn);
         if (approximateAmountIn === undefined) {
           setRoutes(undefined);
           return;
         }
 
-        // TODO: Add margin, maybe 50 bps
+        // Add slippage
+        approximateAmountIn =
+          approximateAmountIn * (1 + formValue.slippage / 100);
+
         const { data } = await api.v1QuoteGet({
           amount: Math.floor(approximateAmountIn),
           inputMint: formValue.inputMint.toBase58(),
           outputMint: formValue.outputMint.toBase58(),
           slippage: formValue.slippage,
         });
-        console.log(routes?.[0]);
-        setRoutes(data);
+        // Exlude Serum
+        const desiredRoutes = data?.filter(
+          (route) =>
+            route.marketInfos &&
+            !route.marketInfos.some((mi) => mi.label === "Serum")
+        );
+        console.log(desiredRoutes?.[0]);
+        if (desiredRoutes?.[0]?.outAmountWithSlippage) {
+          if (desiredRoutes[0].outAmountWithSlippage < formValue.amount)
+            console.log(
+              "Increased slippage:",
+              desiredRoutes[0].outAmountWithSlippage,
+              formValue.amount
+            );
+          desiredRoutes[0].outAmountWithSlippage = formValue.amount;
+        }
+        setRoutes(desiredRoutes);
       } else {
         const { data } = await api.v1QuoteGet({
           amount: formValue.amount,
@@ -250,8 +269,14 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
           </div>
           <div>
             Output:{" "}
-            {(bestRoute.outAmount || 0) /
-              10 ** (outputTokenInfo?.decimals || 1)}{" "}
+            {(bestRoute.outAmount ?? 0) /
+              10 ** (outputTokenInfo?.decimals ?? 0)}{" "}
+            {outputTokenInfo?.symbol}
+          </div>
+          <div>
+            Output amount with slippage:{" "}
+            {(bestRoute.outAmountWithSlippage ?? 0) /
+              10 ** (outputTokenInfo?.decimals ?? 0)}{" "}
             {outputTokenInfo?.symbol}
           </div>
         </div>
@@ -265,7 +290,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
             try {
               if (
                 !isLoading &&
-                routes?.[0] &&
+                bestRoute &&
                 wallet.publicKey &&
                 wallet.signAllTransactions
               ) {
@@ -277,7 +302,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
                   cleanupTransaction,
                 } = await api.v1SwapPost({
                   body: {
-                    route: routes[0],
+                    route: bestRoute,
                     userPublicKey: wallet.publicKey.toBase58(),
                   },
                 });
