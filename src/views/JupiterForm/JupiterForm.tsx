@@ -13,6 +13,7 @@ interface IState {
   inputMint: PublicKey;
   outputMint: PublicKey;
   slippage: number;
+  amountIsOutput: boolean;
 }
 
 const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
@@ -26,6 +27,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
     inputMint: new PublicKey(INPUT_MINT_ADDRESS),
     outputMint: new PublicKey(OUTPUT_MINT_ADDRESS),
     slippage: 1, // 0.1%
+    amountIsOutput: false,
   });
   const [routes, setRoutes] = useState<
     Awaited<ReturnType<typeof api.v1QuoteGet>>["data"]
@@ -45,22 +47,46 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
   // Good to add debounce here to avoid multiple calls
   const fetchRoute = React.useCallback(() => {
     setIsLoading(true);
-    api
-      .v1QuoteGet({
-        amount: formValue.amount,
-        inputMint: formValue.inputMint.toBase58(),
-        outputMint: formValue.outputMint.toBase58(),
-        slippage: formValue.slippage,
-      })
-      .then(({ data }) => {
-        if (data) {
-          setRoutes(data);
+    async function updateRoutes() {
+      console.log(formValue.amountIsOutput);
+      // TODO: Branch logic to call api in one direction then the other once a rough
+      if (formValue.amountIsOutput) {
+        const { data: reversedRoutes } = await api.v1QuoteGet({
+          amount: formValue.amount,
+          inputMint: formValue.outputMint.toBase58(),
+          outputMint: formValue.inputMint.toBase58(),
+          slippage: formValue.slippage,
+        });
+        const approximateAmountIn = reversedRoutes?.[0]?.outAmount;
+        console.log("approximateAmountIn:", approximateAmountIn);
+        if (approximateAmountIn === undefined) {
+          setRoutes(undefined);
+          return;
         }
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+
+        // TODO: Add margin, maybe 50 bps
+        const { data } = await api.v1QuoteGet({
+          amount: Math.floor(approximateAmountIn),
+          inputMint: formValue.inputMint.toBase58(),
+          outputMint: formValue.outputMint.toBase58(),
+          slippage: formValue.slippage,
+        });
+        console.log(routes?.[0]);
+        setRoutes(data);
+      } else {
+        const { data } = await api.v1QuoteGet({
+          amount: formValue.amount,
+          inputMint: formValue.inputMint.toBase58(),
+          outputMint: formValue.outputMint.toBase58(),
+          slippage: formValue.slippage,
+        });
+        setRoutes(data);
+      }
+    }
+    updateRoutes().finally(() => setIsLoading(false));
   }, [api, formValue]);
+
+  const bestRoute = useMemo(() => routes?.[0], [routes]);
 
   useEffect(() => {
     fetchRoute();
@@ -71,7 +97,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
     [routeMap, formValue.inputMint?.toBase58()]
   );
 
-  // ensure outputMint can be swapable to inputMint
+  // ensure outputMint can be swappable to inputMint
   useEffect(() => {
     if (formValue.inputMint) {
       const possibleOutputs = routeMap.get(formValue.inputMint.toBase58());
@@ -153,8 +179,28 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
       </div>
 
       <div>
+        <label htmlFor="amount" className="text-sm font-medium">
+          Amount is output (estimated)
+        </label>
+        <input
+          name="amountIsOutput"
+          id="amount-is-output"
+          className="shadow-sm bg-neutral p-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border-gray-300 rounded-md"
+          checked={formValue.amountIsOutput}
+          onChange={({ target }) =>
+            setFormValue((val) => ({ ...val, amountIsOutput: target.checked }))
+          }
+          type="checkbox"
+        />
+      </div>
+
+      <div>
         <label htmlFor="amount" className="block text-sm font-medium">
-          Input Amount ({inputTokenInfo?.symbol})
+          Amount (
+          {formValue.amountIsOutput
+            ? outputTokenInfo?.symbol
+            : inputTokenInfo?.symbol}
+          )
         </label>
         <div className="mt-1">
           <input
@@ -196,26 +242,20 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
 
       <div>Total routes: {routes?.length}</div>
 
-      {routes?.[0] &&
-        (() => {
-          const route = routes[0];
-          if (route) {
-            return (
-              <div>
-                <div>
-                  Best route info :{" "}
-                  {route.marketInfos?.map((info) => info.label)}
-                </div>
-                <div>
-                  Output:{" "}
-                  {(route.outAmount || 0) /
-                    10 ** (outputTokenInfo?.decimals || 1)}{" "}
-                  {outputTokenInfo?.symbol}
-                </div>
-              </div>
-            );
-          }
-        })()}
+      {bestRoute && (
+        <div>
+          <div>
+            Best route info :{" "}
+            {bestRoute.marketInfos?.map((info) => info.label).join(" x ")}
+          </div>
+          <div>
+            Output:{" "}
+            {(bestRoute.outAmount || 0) /
+              10 ** (outputTokenInfo?.decimals || 1)}{" "}
+            {outputTokenInfo?.symbol}
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-center mt-4">
         <button
