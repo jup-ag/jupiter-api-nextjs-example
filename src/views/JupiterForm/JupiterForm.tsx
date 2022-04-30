@@ -26,7 +26,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
     amount: 1 * 10 ** 6, // unit in lamports (Decimals)
     inputMint: new PublicKey(INPUT_MINT_ADDRESS),
     outputMint: new PublicKey(OUTPUT_MINT_ADDRESS),
-    slippage: 1,
+    slippage: 0.1, // 0.1%
     amountIsOutput: false,
   });
   const [routes, setRoutes] = useState<
@@ -58,6 +58,7 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
           slippage: formValue.slippage,
           // directRoutesOnly: true,
         });
+        console.log("reversed:", reversedRoutes?.[0]);
         let approximateAmountIn = reversedRoutes?.[0]?.outAmount;
         console.log("approximateAmountIn:", approximateAmountIn);
         if (approximateAmountIn === undefined) {
@@ -66,11 +67,12 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
         }
 
         // Add slippage
-        approximateAmountIn =
-          approximateAmountIn * (1 + formValue.slippage / 100);
-
+        approximateAmountIn = Math.floor(
+          approximateAmountIn * (1 + formValue.slippage / 100)
+        );
+        console.log("formValue:", formValue);
         const { data } = await api.v1QuoteGet({
-          amount: Math.floor(approximateAmountIn),
+          amount: approximateAmountIn,
           inputMint: formValue.inputMint.toBase58(),
           outputMint: formValue.outputMint.toBase58(),
           slippage: formValue.slippage,
@@ -83,12 +85,11 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
         );
         console.log(desiredRoutes?.[0]);
         if (desiredRoutes?.[0]?.outAmountWithSlippage) {
-          if (desiredRoutes[0].outAmountWithSlippage < formValue.amount)
-            console.log(
-              "Increased slippage:",
-              desiredRoutes[0].outAmountWithSlippage,
-              formValue.amount
-            );
+          console.log(
+            "slippage:",
+            desiredRoutes[0].outAmountWithSlippage,
+            formValue.amount
+          );
           desiredRoutes[0].outAmountWithSlippage = formValue.amount;
         }
         setRoutes(desiredRoutes);
@@ -267,6 +268,14 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
             Best route info :{" "}
             {bestRoute.marketInfos?.map((info) => info.label).join(" x ")}
           </div>
+          {formValue.amountIsOutput && (
+            <div>
+              Input:{" "}
+              {(bestRoute.inAmount ?? 0) /
+                10 ** (inputTokenInfo?.decimals ?? 0)}{" "}
+              {inputTokenInfo?.symbol}
+            </div>
+          )}
           <div>
             Output:{" "}
             {(bestRoute.outAmount ?? 0) /
