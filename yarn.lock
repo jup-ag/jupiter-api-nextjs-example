@@ -171,10 +171,10 @@
     "@json-rpc-tools/types" "^1.7.6"
     "@pedrouid/environment" "^1.0.1"
 
-"@jup-ag/api@^0.0.2":
-  version "0.0.2"
-  resolved "https://registry.yarnpkg.com/@jup-ag/api/-/api-0.0.2.tgz#0817485a52a27428eef662c39a7a5135265e12d2"
-  integrity sha512-rKXzyBalmJGCvAT/18mBChOKKUL3/igoomAhT+YtuhODcfV8xO0xDKsHz4ugSZsGXThkJeRF2TPohTHU3e53wQ==
+"@jup-ag/api@^0.0.3":
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/@jup-ag/api/-/api-0.0.3.tgz#923b0a51a4f1b189c6ef763d0c66f14f88fa2668"
+  integrity sha512-Hh5WaI0D2FTX2x2pJ6YM0BE9WubjOmE2LjsTcbRFslwOv2OjVRB6P6dP3XLmNnO7IgRQAm/GW0gAjdfxDcdWoQ==
   dependencies:
     cross-fetch "^3.1.5"
 
