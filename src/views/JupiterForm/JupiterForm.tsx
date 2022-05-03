@@ -56,26 +56,39 @@ const JupiterForm: FunctionComponent<IJupiterFormProps> = (props) => {
           inputMint: formValue.outputMint.toBase58(),
           outputMint: formValue.inputMint.toBase58(),
           slippage: formValue.slippage,
-          // directRoutesOnly: true,
+          onlyDirectRoutes: true,
         });
-        console.log("reversed:", reversedRoutes?.[0]);
-        let approximateAmountIn = reversedRoutes?.[0]?.outAmount;
-        console.log("approximateAmountIn:", approximateAmountIn);
-        if (approximateAmountIn === undefined) {
+        const bestReversedRoute = reversedRoutes?.[0];
+        console.log("bestReversedRoute:", bestReversedRoute);
+        let approximateAmountIn = bestReversedRoute?.outAmount;
+        if (
+          bestReversedRoute === undefined ||
+          approximateAmountIn === undefined
+        ) {
           setRoutes(undefined);
           return;
         }
-
-        // Add slippage
-        approximateAmountIn = Math.floor(
-          approximateAmountIn * (1 + formValue.slippage / 100)
+        console.log(
+          "approximateAmountIn:",
+          approximateAmountIn,
+          bestReversedRoute.marketInfos?.map((mi) => mi.label)
         );
+
+        const lpFee = bestReversedRoute.marketInfos?.[0]?.lpFee;
+
+        // Add slippage and spread due to amm fee, we assume cpamm
+        approximateAmountIn = Math.floor(
+          approximateAmountIn *
+            (1 + formValue.slippage / 100 + 2 * (lpFee?.pct ?? 0))
+        );
+        console.log("approximateAmountIn with margin:", approximateAmountIn);
         console.log("formValue:", formValue);
         const { data } = await api.v1QuoteGet({
           amount: approximateAmountIn,
           inputMint: formValue.inputMint.toBase58(),
           outputMint: formValue.outputMint.toBase58(),
           slippage: formValue.slippage,
+          onlyDirectRoutes: true,
         });
         // Exlude Serum
         const desiredRoutes = data?.filter(
